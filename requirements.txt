@@ -1,0 +1,9 @@
+# Core — keep this minimal on purpose (8 GB RAM laptop!)
+gradio>=5.0
+
+# GGUF inference engine.
+# On Linux, PyPI only has the source tarball (needs a compiler).
+# run.sh installs the prebuilt CPU wheel from the official index instead:
+#   pip install llama-cpp-python --only-binary=llama-cpp-python \
+#       --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+llama-cpp-python>=0.3.2
