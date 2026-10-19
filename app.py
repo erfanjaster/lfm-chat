@@ -1,7 +1,8 @@
 """
-app.py — LFM Memory Chat: a beautiful Gradio interface for
-LFM2.5-1.2B-Instruct (roleplay fine-tune, GGUF Q4_K_M) with an engineered,
-low-resource long-term memory system.
+app.py — Nova: your local AI friend (not a tool) with engineered long-term
+memory. Gradio interface for LFM2.5-1.2B-Instruct (roleplay fine-tune,
+GGUF Q4_K_M), performance-tuned for low-RAM laptops like the
+HP EliteBook 850 G4 (i5-7300U, 8 GB).
 
 Run:  python app.py            (add --mock to preview the UI without a model)
 """
@@ -34,9 +35,11 @@ class MockEngine:
 
     def stream(self, system_prompt, messages, max_tokens=None):
         user = messages[-1][1] if messages else ""
-        reply = (f"[MOCK MODE — model not loaded]\n\nYou said: *{user}*\n\n"
+        reply = (f"[MOCK MODE — model not loaded]\n\n"
+                 f"Hey, I'm Nova — your friend, not a chatbot utility. "
+                 f"You said: *{user}*\n\n"
                  "Install `llama-cpp-python` and place the GGUF in `models/` "
-                 "to chat for real. The memory system below is fully active "
+                 "to talk for real. The memory system below is fully active "
                  "even in mock mode.")
         for word in reply.split(" "):
             yield word + " "
@@ -78,19 +81,20 @@ class ChatApp:
 
     def _format_used(self, retrieval: RetrievalResult) -> str:
         if not retrieval.memories:
-            return "_No memories were relevant this turn._"
+            return "_Nothing from the past felt relevant this turn._"
         lines = []
         icons = {"profile": "👤", "lesson": "📘", "event": "📌"}
         for rec, score in zip(retrieval.memories, retrieval.scores):
             icon = icons.get(rec.mtype, "🧠")
             lines.append(f"{icon} `{score:.2f}` {html.escape(rec.text)}")
-        return "\n".join(f"- {l}" for l in lines)
+        return ("**What Nova remembered this turn:**\n"
+                + "\n".join(f"- {l}" for l in lines))
 
     def _stats_md(self, session_id: str) -> str:
         n = self.manager.count()
         speed = getattr(self.engine, "last_speed", 0.0)
-        return (f"🧠 **{n}** memories &nbsp;·&nbsp; ⚡ **{speed:.1f}** tok/s "
-                f"&nbsp;·&nbsp; 🔖 session `{session_id}`")
+        return (f"🫂 **{n}** things Nova remembers &nbsp;·&nbsp; ⚡ "
+                f"**{speed:.1f}** tok/s &nbsp;·&nbsp; 🔖 chat `{session_id}`")
 
     # -- core chat callback ----------------------------------------------------
 
@@ -104,8 +108,8 @@ class ChatApp:
         # 1) Explicit "remember ..." command -> store instantly, cheap reply
         mid = self.manager.capture_explicit(user_msg)
         if mid is not None:
-            confirm = (f"💾 **Saved to long-term memory** (id {mid}). "
-                       f"I'll bring this up whenever it's relevant.")
+            confirm = (f"💾 Got it — I'll remember that. "
+                       f"(id {mid}, I'll bring it up whenever it matters.)")
             history = history + [{"role": "user", "content": user_msg},
                                  {"role": "assistant", "content": confirm}]
             self.manager.store.append_message(session_id, "user", user_msg)
@@ -235,23 +239,26 @@ CUSTOM_CSS = """
 button.primary { border-radius: 10px !important; font-weight: 700 !important; }
 #mem-table { font-size: .82rem; }
 footer { display: none !important; }
+/* Performance: keep the DOM light so streaming stays smooth on weak GPUs */
+#chat .prose { contain: content; }
 """
 
 
 def build_ui(app: ChatApp) -> gr.Blocks:
     theme = gr.themes.Soft(primary_hue="violet", neutral_hue="slate")
     if _GR_MAJOR >= 6:
-        demo_ctx = gr.Blocks(title="LFM Memory Chat")
+        demo_ctx = gr.Blocks(title="Nova — your local AI friend")
     else:
-        demo_ctx = gr.Blocks(title="LFM Memory Chat", theme=theme,
+        demo_ctx = gr.Blocks(title="Nova — your local AI friend", theme=theme,
                              css=CUSTOM_CSS)
     with demo_ctx as demo:
 
         session = gr.State(app.manager.current_session)
 
-        gr.Markdown("# 🧠 LFM Memory Chat", elem_id="app-title")
-        gr.Markdown("LFM2.5-1.2B roleplay · engineered long-term memory · "
-                    "BM25 + reinforcement + rolling summaries", elem_id="app-sub")
+        gr.Markdown("# 🫂 Nova — your local AI friend", elem_id="app-title")
+        gr.Markdown("LFM2.5-1.2B roleplay · remembers you like a friend should "
+                    "· BM25 + reinforcement + rolling summaries · "
+                    "⚡ KV-cache q8_0 + mmap (low RAM, fast)", elem_id="app-sub")
 
         with gr.Row(equal_height=False):
             # ------------------------------------------------ chat column
@@ -264,17 +271,17 @@ def build_ui(app: ChatApp) -> gr.Blocks:
                 stats_bar = gr.Markdown("", elem_id="stats-bar")
                 with gr.Row():
                     msg = gr.Textbox(
-                        placeholder="Type a message…  (tip: start with "
-                                    "\"remember …\" to teach it instantly)",
+                        placeholder="Talk to Nova…  (tip: start with "
+                                    "\"remember …\" and she'll keep it forever)",
                         show_label=False, container=False, scale=6, lines=1)
                     send = gr.Button("Send", variant="primary", scale=1)
                 with gr.Row():
-                    used_mem = gr.Markdown("_No memories were relevant this turn._",
+                    used_mem = gr.Markdown("_Nothing from the past felt relevant yet._",
                                            elem_id="used-mem")
 
             # ------------------------------------------------ sidebar
             with gr.Column(scale=2, min_width=340):
-                gr.Markdown("### 💾 Teach a memory")
+                gr.Markdown("### 💾 Teach Nova something")
                 teach_text = gr.Textbox(lines=2, placeholder=(
                     'e.g. "In my Python code always use pathlib instead of os.path"'),
                     show_label=False)
@@ -284,7 +291,7 @@ def build_ui(app: ChatApp) -> gr.Blocks:
                     teach_btn = gr.Button("Store", variant="primary", scale=1)
                 teach_status = gr.Markdown("")
 
-                gr.Markdown("### 🗂 Memory browser")
+                gr.Markdown("### 🗂 What Nova remembers")
                 search_box = gr.Textbox(placeholder="Search memories…",
                                         show_label=False, container=False)
                 df_kwargs = dict(
@@ -305,7 +312,7 @@ def build_ui(app: ChatApp) -> gr.Blocks:
                 table_status = gr.Markdown("")
 
                 gr.Markdown("### ⚙️ Session")
-                clear_btn = gr.Button("🧹 New chat (keep memories)")
+                clear_btn = gr.Button("🧹 New chat (Nova keeps remembering you)")
                 reset_btn = gr.Button("☠️ Reset everything", variant="stop")
 
         # -------------------------------------------------- wiring
@@ -341,7 +348,7 @@ def build_ui(app: ChatApp) -> gr.Blocks:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="LFM Memory Chat")
+    parser = argparse.ArgumentParser(description="Nova — your local AI friend")
     parser.add_argument("--mock", action="store_true",
                         help="run UI without loading the GGUF (preview mode)")
     parser.add_argument("--share", action="store_true",
@@ -350,7 +357,7 @@ def main() -> None:
     args = parser.parse_args()
 
     print("=" * 62)
-    print("  LFM Memory Chat — starting…")
+    print("  Nova — your local AI friend · starting…")
     if args.mock:
         print("  MOCK MODE: UI preview without the model.")
         engine = MockEngine()
@@ -369,7 +376,9 @@ def main() -> None:
                   "  3) Try 'python app.py --mock' to preview the UI.\n")
             sys.exit(1)
         print(f"  Model loaded in {time.time() - t0:.1f}s "
-              f"(ctx={config.N_CTX}, threads={config.N_THREADS})")
+              f"(ctx={config.N_CTX}, threads={config.N_THREADS}, "
+              f"kv={getattr(config, 'CACHE_TYPE_K', 'f16')}, "
+              f"mmap={getattr(config, 'USE_MMAP', True)})")
     print("=" * 62)
 
     manager = MemoryManager(
@@ -383,7 +392,8 @@ def main() -> None:
         launch_kwargs["theme"] = gr.themes.Soft(primary_hue="violet",
                                                 neutral_hue="slate")
         launch_kwargs["css"] = CUSTOM_CSS
-    demo.queue(default_concurrency_limit=1).launch(**launch_kwargs)
+    demo.queue(default_concurrency_limit=1, status_update_rate="auto") \
+        .launch(**launch_kwargs)
 
 
 if __name__ == "__main__":
