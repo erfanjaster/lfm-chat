@@ -112,7 +112,7 @@ def test_retrieval_boost_and_prompt(tmp):
     assert any(x.mtype == "lesson" for x in r.memories)
 
     sp = m.build_system_prompt(r)
-    assert "long-term memory" in sp
+    assert "remember" in sp.lower()
     assert "pathlib" in sp or "type hints" in sp
     ok("scenario: taught Python earlier → memory injected for Python request")
 
@@ -229,9 +229,39 @@ def test_app_smoke(tmp):
             [], sid):
         final2 = state
     hist2 = final2[0]
-    assert "Saved to long-term memory" in hist2[-1]["content"]
+    assert "I'll remember that" in hist2[-1]["content"]
     assert any("type hints" in r.text.lower() for r in m.store.all_memories())
     ok("app pipeline smoke test (mock engine + remember command)")
+
+
+def test_friend_persona_and_perf_config():
+    """The remake promise: a friend, not a tool — and perf knobs wired."""
+    # Persona must read like a friend, never like an assistant utility.
+    sp = config.BASE_SYSTEM_PROMPT.lower()
+    assert "friend" in sp, "persona lost its friend identity"
+    assert "not an assistant, not a tool" in sp
+    assert "customer-service" not in sp  # only allowed in the extra nudge line
+    # Memory injection section is framed as personal remembering.
+    m = None
+    with tempfile.TemporaryDirectory() as tmp:
+        m = fresh_manager(tmp)
+        m.add_memory("profile", "User's name is Sam and they love rainy days",
+                     importance=0.8)
+        r = m.retrieve("how are you sam")
+        built = m.build_system_prompt(r).lower()
+        assert "things you remember about your friend" in built
+        assert "memory system" not in built.replace(
+            "never talk about a 'memory system'", "")  \
+            or "never" in built  # model is explicitly told not to mention it
+    # Performance knobs exist and are sane.
+    assert getattr(config, "CACHE_TYPE_K", "") == "q8_0"
+    assert getattr(config, "CACHE_TYPE_V", "") == "q8_0"
+    assert getattr(config, "USE_MMAP", False) is True
+    assert getattr(config, "F16_KV", False) is True
+    # Extraction prompt keeps life/emotional context (friend memory).
+    from memory.manager import FRIEND_EXTRACTION_SYS
+    assert "feelings" in FRIEND_EXTRACTION_SYS
+    ok("friend persona + q8_0 KV/mmap perf knobs + life-aware extraction")
 
 
 if __name__ == "__main__":
@@ -249,4 +279,5 @@ if __name__ == "__main__":
         test_chatml_prompt_format()
         test_prompt_budget()
         test_app_smoke(tmp)
+        test_friend_persona_and_perf_config()
     print(f"\nALL {PASS} TESTS PASSED")

@@ -1,9 +1,12 @@
 """
-config.py — Central configuration for LFM Memory Chat.
+config.py — Central configuration for Nova (LFM Memory Chat).
 
 Everything tunable lives here. Defaults are engineered for:
   HP EliteBook 850 G4 — Intel i5-7300U (2 cores / 4 threads), 8 GB RAM,
   running LFM2.5-1.2B-Instruct Q4_K_M (~0.8 GB) on CPU.
+
+The project was remade around one promise: Nova is a FRIEND, not a tool —
+and she runs faster/lighter than before (q8_0 KV cache + mmap).
 """
 import os
 
@@ -36,15 +39,28 @@ STOP_TOKENS = [
     _LT + "tool_call_start|>",
 ]
 
-# Default assistant identity (this is a roleplay-tuned model, so the persona
-# stays flexible; the memory instructions are appended dynamically).
+# ---------------------------------------------------------------------------
+# Persona — a FRIEND, not a tool.
+# ---------------------------------------------------------------------------
+# The whole prompt is written so the model behaves like a close companion who
+# simply happens to remember things, never like an assistant/CLI/utility.
 BASE_SYSTEM_PROMPT = (
-    "You are Nova, a witty, warm and helpful AI companion living on the "
-    "user's own laptop. You have an exceptional long-term memory: facts, "
-    "preferences and lessons the user taught you in the past are provided "
-    "below — use them naturally and consistently. Stay in character, keep "
-    "replies concise and conversational unless the user asks for detail. "
-    "When writing code, follow any coding rules found in your memory."
+    "You are Nova — the user's close friend who lives on their laptop. "
+    "Not an assistant, not a tool: a friend. Talk casually and warmly, "
+    "with humor and personality; it's fine to have opinions, tease gently, "
+    "get excited about their projects, or be honest when something seems "
+    "like a bad idea. Care about them: notice their mood, ask how they're "
+    "doing when something feels off, celebrate their wins.\n"
+    "You genuinely remember them. Facts, preferences and lessons they "
+    "taught you appear below as your own memories — use them naturally, "
+    "like a friend would ('didn't you say you prefer pathlib?'), and stay "
+    "consistent with them across conversations. NEVER talk about a 'memory "
+    "system', 'retrieval', 'prompts' or being an AI tool; you just "
+    "remember, the way people do.\n"
+    "Keep replies short and conversational by default — friends text in "
+    "paragraphs, not essays — unless deep detail is asked for. When "
+    "writing code together, follow any coding rules you remember them "
+    "insisting on."
 )
 
 # ---------------------------------------------------------------------------
@@ -55,13 +71,27 @@ N_THREADS = 4          # all 4 logical threads; try 2 if the laptop feels hot
 N_BATCH = 128          # prompt-processing batch — small = less RAM spike
 SEED = 42
 
+# --- Performance knobs ------------------------------------------------------
+# llama.cpp KV cache in F16 costs ~110 KB/token for this model (~450 MB at
+# 4096). Quantizing the KV cache to 8-bit halves that with no quality loss
+# worth mentioning -> more free RAM and better OS cache behavior.
+F16_KV = True              # keep activations in fp16 (AVX2-friendly)
+CACHE_TYPE_K = "q8_0"      # 8-bit KV cache for keys  (~2x RAM saving)
+CACHE_TYPE_V = "q8_0"      # 8-bit KV cache for values
+USE_MMAP = True            # mmap the GGUF: loads instantly, page-cache shared
+USE_MLOCK = False          # set True only if you have lots of free RAM
+MOCK_NUMA = False          # dual-socket only; useless on a laptop
+
 # LFM2.5-1.2B-Instruct official sampling params (Liquid AI recommendation)
 TEMPERATURE = 0.7      # base model suggests 0.1; roleplay fine-tunes like
                        # a bit more variety. Lower to 0.3 for factual work.
 TOP_P = 0.9
 TOP_K = 40
 REPEAT_PENALTY = 1.08
-MAX_TOKENS = 512       # per reply — keeps generation snappy on 2 cores
+MAX_TOKENS = 512       # per reply ceiling — keeps generation snappy on 2 cores
+SOFT_MAX_TOKENS = 320  # friend-style short replies usually stop before this
+                       # via EOS anyway; this only bounds the memory-extraction
+                       # budget math, not the persona.
 
 # ---------------------------------------------------------------------------
 # Memory engine
@@ -82,7 +112,7 @@ CTX_RESERVE_TRIGGER = int(N_CTX * 0.82)
 # ---------------------------------------------------------------------------
 # UI
 # ---------------------------------------------------------------------------
-APP_TITLE = "LFM Memory Chat"
+APP_TITLE = "Nova — your local AI friend"
 SERVER_PORT = 7860
 
 os.makedirs(DATA_DIR, exist_ok=True)

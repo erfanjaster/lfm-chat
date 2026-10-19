@@ -44,14 +44,29 @@ class LLMEngine:
             raise RuntimeError(
                 f"Model file not found:\n  {self.model_path}\n"
                 "Set MODEL_PATH in config.py or the LFM_MODEL_PATH env var.")
-        self._llama = Llama(
+        kwargs = dict(
             model_path=self.model_path,
             n_ctx=config.N_CTX,
             n_threads=config.N_THREADS,     # 4 = all HT threads of i5-7300U
             n_batch=config.N_BATCH,
             seed=config.SEED,
             verbose=False,
+            # ---- performance (see config.py) ----
+            type_k=getattr(config, "CACHE_TYPE_K", "f16"),   # 8-bit KV cache
+            type_v=getattr(config, "CACHE_TYPE_V", "f16"),   #  halves ctx RAM
+            f16kvcache=config.F16_KV,
+            use_mmap=config.USE_MMAP,       # instant-ish loads, shared pagecache
+            use_mlock=config.USE_MLOCK,
+            mock_numa=config.MOCK_NUMA,
         )
+        try:
+            self._llama = Llama(**kwargs)
+        except TypeError:
+            # Older llama-cpp-python without KV-cache quantization args:
+            # drop them and load anyway instead of crashing.
+            for k in ("type_k", "type_v", "f16kvcache", "mock_numa"):
+                kwargs.pop(k, None)
+            self._llama = Llama(**kwargs)
         self.loaded = True
 
     # --------------------------------------------------------------- prompt

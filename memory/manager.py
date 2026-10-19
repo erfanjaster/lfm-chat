@@ -96,6 +96,14 @@ EXTRACTION_SYS = (
     "- No explanations, no numbering, no markdown."
 )
 
+# Friend-aware extraction: also capture emotional/relational context so Nova
+# remembers *life*, not just rules — like a real friend does.
+FRIEND_EXTRACTION_SYS = EXTRACTION_SYS.replace(
+    "about the user or things the user taught. Rules:",
+    "about the user, things the user taught, or what's going on in their life"
+    " (projects, feelings, people they mentioned, plans, ongoing struggles)."
+    " Prefer warm personal facts over trivia. Rules:")
+
 SUMMARY_SYS = (
     "You compress chat history. Rewrite the OLD SUMMARY plus the NEW MESSAGES"
     " into ONE updated summary of max {words} words. Keep: user facts,"
@@ -181,7 +189,7 @@ class MemoryManager:
     def _extract_worker(self, user_text: str, assistant_text: str) -> None:
         try:
             convo = f"USER: {user_text[:800]}\nASSISTANT: {assistant_text[:800]}"
-            prompt = (f"{config.IM_START}system\n{EXTRACTION_SYS}{config.IM_END}\n"
+            prompt = (f"{config.IM_START}system\n{FRIEND_EXTRACTION_SYS}{config.IM_END}\n"
                       f"{config.IM_START}user\n{convo}{config.IM_END}\n"
                       f"{config.IM_START}assistant\n")
             out = self.generate_fn(prompt, max_tokens=140, temperature=0.0)
@@ -273,7 +281,7 @@ class MemoryManager:
         parts: List[str] = [config.BASE_SYSTEM_PROMPT.strip()]
 
         if retrieval.summary:
-            parts.append("## Conversation summary (older context)\n"
+            parts.append("## What's been going on lately (older context)\n"
                          + retrieval.summary.strip())
 
         if retrieval.memories:
@@ -282,15 +290,17 @@ class MemoryManager:
                 tag = f" [{rec.tags}]" if rec.tags else ""
                 lines.append(f"{i}. ({rec.mtype}){tag} {rec.text}")
             parts.append(
-                "## Your long-term memory (learned from past conversations)\n"
+                "## Things you remember about your friend\n"
                 + "\n".join(lines)
-                + "\nUse these memories naturally when relevant — e.g. if a"
-                  " memory contains a coding style or technique the user"
-                  " taught, apply it in your code without being asked."
-                  " Never mention that you have a memory system.")
+                + "\nThese are YOUR memories of them — bring them up naturally"
+                  " when relevant, like a friend would ('you always say you"
+                  " prefer...'), and apply remembered coding rules without"
+                  " being asked. Never mention any system or process behind"
+                  " your memory; just remember.")
 
-        parts.append("## Current session\n"
-                     f"Time: {time.strftime('%Y-%m-%d %H:%M')}")
+        parts.append("## Right now\n"
+                     f"Time: {time.strftime('%Y-%m-%d %H:%M')}"
+                     " — talk like their friend, not a customer-service bot.")
         return "\n\n".join(parts)
 
     def get_context_messages(self, session_id: str) -> List[Tuple[str, str]]:
